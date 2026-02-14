@@ -19,6 +19,12 @@ Implemented MVP features:
 - `backend` - FastAPI app, SQLAlchemy models, Alembic migrations, tests
 - `frontend` - React app (Vite + TypeScript)
 
+## Local Setup Requirements (For testing)
+
+1. Python 3.11 and above
+2. Node.js
+3. Postgres
+
 ## Backend setup
 
 1. Create and activate a virtual environment.
@@ -27,6 +33,9 @@ Implemented MVP features:
 cd backend
 python -m venv .venv
 .\.venv\Scripts\Activate.ps1
+
+# For windows, either give bypass for scripts in powershell or use this in command prompt instead
+.\.venv\Scripts\Activate.bat
 ```
 
 2. Install dependencies.
@@ -35,7 +44,7 @@ python -m venv .venv
 python -m pip install -e .[dev]
 ```
 
-3. Configure environment.
+3. Configure environment. (Use powershell)
 
 ```powershell
 Copy-Item .env.example .env
@@ -64,7 +73,7 @@ cd frontend
 npm install
 ```
 
-2. Configure environment.
+2. Configure environment. (Use powershell)
 
 ```powershell
 Copy-Item .env.example .env
