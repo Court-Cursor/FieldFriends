@@ -164,3 +164,12 @@ def test_get_my_events(db_session) -> None:
     assert len(joined_events) == 1
     assert joined_events[0][0].id == event_2.id
 
+def test_join_event_not_found(db_session) -> None:
+    auth = signup(db_session, AuthRequest(email="creator@example.com", password="password123"))
+    user = db_session.get(User, auth.user.id)
+    assert user is not None
+
+    with pytest.raises(HTTPException) as exc:
+        event_service.join_event(db_session, uuid.uuid4(), user)
+    assert exc.value.status_code == 404
+    assert "Event not found" in exc.value.detail
