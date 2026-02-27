@@ -18,7 +18,10 @@ jobs:
       pull-requests: write
 
     steps:
-      - name: Merge PR
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Enable auto-merge
         uses: peter-evans/enable-pull-request-automerge@v3
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
