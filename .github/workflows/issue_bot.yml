@@ -24,6 +24,7 @@ jobs:
         uses: actions/github-script@v7
         env:
           OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+          AI_MODEL: ${{ vars.BOT_AI_MODEL }}
         with:
           script: |
             const issueNumber = context.issue.number;
@@ -105,7 +106,7 @@ jobs:
                 'X-Title': 'GitHub Issue Auto-Responder'
               },
               body: JSON.stringify({
-                model: 'meta-llama/llama-3.2-3b-instruct:free', // Free model
+                model: process.env.AI_MODEL,
                 messages: [
                   {
                     role: 'user',
