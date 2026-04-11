@@ -30,7 +30,16 @@ async function request<T>(path: string, init?: RequestInit, token?: string): Pro
     throw new ApiError(response.status, message);
   }
 
-  return (await response.json()) as T;
+  if (response.status === 204) {
+    return null as T;
+  }
+
+  const raw = await response.text();
+  if (!raw) {
+    return null as T;
+  }
+
+  return JSON.parse(raw) as T;
 }
 
 export const apiClient = {
@@ -69,6 +78,18 @@ export const apiClient = {
 
   joinEvent(eventId: string, token: string) {
     return request<EventItem>(`/events/${eventId}/join`, { method: "POST" }, token);
+  },
+
+  leaveEvent(eventId: string, token: string) {
+    return request<EventItem>(`/events/${eventId}/leave`, { method: "DELETE" }, token);
+  },
+
+  async deleteEvent(eventId: string, token: string) {
+    await request<null>(`/events/${eventId}`, { method: "DELETE" }, token);
+  },
+
+  async removeParticipant(eventId: string, userId: string, token: string) {
+    await request<null>(`/events/${eventId}/participants/${userId}`, { method: "DELETE" }, token);
   },
 
   myEvents(token: string) {

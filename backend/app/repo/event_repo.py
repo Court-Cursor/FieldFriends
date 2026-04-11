@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import UTC, datetime
 import uuid
 
-from sqlalchemy import and_, func, or_, select
+from sqlalchemy import and_, delete, func, or_, select
 from sqlalchemy.orm import Session
 
 from app.models.event import Event
@@ -20,6 +20,13 @@ def create_event(db: Session, event: Event) -> Event:
 def get_event_by_id(db: Session, event_id: uuid.UUID) -> Event | None:
     stmt = select(Event).where(Event.id == event_id)
     return db.execute(stmt).scalar_one_or_none()
+
+
+def delete_event(db: Session, event_id: uuid.UUID) -> bool:
+    stmt = delete(Event).where(Event.id == event_id)
+    result = db.execute(stmt)
+    db.commit()
+    return bool(result.rowcount and result.rowcount > 0)
 
 
 def list_upcoming_events(
