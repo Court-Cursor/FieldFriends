@@ -2,8 +2,9 @@ from fastapi import APIRouter, Depends
 
 from app.api.deps import get_current_user
 from app.models.user import User
-from app.schemas.event import MyEventsResponse, to_event_response
+from app.schemas.event import EventParticipantResponse, MyEventsResponse, to_event_response
 from app.schemas.user import UserProfile
+from app.repo import participant_repo
 from app.service import event_service
 from app.db.session import get_db
 from sqlalchemy.orm import Session
@@ -22,7 +23,16 @@ def my_events(
     current_user: User = Depends(get_current_user),
 ) -> MyEventsResponse:
     created, joined = event_service.get_my_events(db, current_user)
+
+    def build_event_response(event, joined_count, is_joined):
+        participants = participant_repo.list_participants_with_users(db, event.id)
+        participants_payload = [
+            EventParticipantResponse(user_id=user.id, email=user.email, joined_at=participant.joined_at)
+            for participant, user in participants
+        ]
+        return to_event_response(event, joined_count, is_joined, participants_payload)
+
     return MyEventsResponse(
-        created_events=[to_event_response(event, joined_count, is_joined) for event, joined_count, is_joined in created],
-        joined_events=[to_event_response(event, joined_count, is_joined) for event, joined_count, is_joined in joined],
+        created_events=[build_event_response(event, joined_count, is_joined) for event, joined_count, is_joined in created],
+        joined_events=[build_event_response(event, joined_count, is_joined) for event, joined_count, is_joined in joined],
     )

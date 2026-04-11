@@ -25,6 +25,13 @@ export interface EventItem {
   created_at: string;
   joined_count: number;
   is_joined_by_me: boolean | null;
+  participants?: EventParticipant[] | null;
+}
+
+export interface EventParticipant {
+  user_id: string;
+  email: string;
+  joined_at: string;
 }
 
 export interface EventCreatePayload {

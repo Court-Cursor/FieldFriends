@@ -58,6 +58,13 @@ class EventResponse(BaseModel):
     created_at: datetime
     joined_count: int
     is_joined_by_me: bool | None = None
+    participants: list["EventParticipantResponse"] | None = None
+
+
+class EventParticipantResponse(BaseModel):
+    user_id: uuid.UUID
+    email: str
+    joined_at: datetime
 
 
 class MyEventsResponse(BaseModel):
@@ -65,7 +72,12 @@ class MyEventsResponse(BaseModel):
     joined_events: list[EventResponse]
 
 
-def to_event_response(event, joined_count: int, is_joined_by_me: bool | None) -> EventResponse:
+def to_event_response(
+    event,
+    joined_count: int,
+    is_joined_by_me: bool | None,
+    participants: list[EventParticipantResponse] | None = None,
+) -> EventResponse:
     return EventResponse(
         id=event.id,
         creator_id=event.creator_id,
@@ -81,4 +93,5 @@ def to_event_response(event, joined_count: int, is_joined_by_me: bool | None) ->
         created_at=event.created_at,
         joined_count=joined_count,
         is_joined_by_me=is_joined_by_me,
+        participants=participants,
     )
