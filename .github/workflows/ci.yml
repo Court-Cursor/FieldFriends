@@ -196,8 +196,7 @@ jobs:
             --config=p/secrets \
             --exclude=backend/tests \
             --severity=ERROR \
-            --sarif \
-            --json \
+            --sarif --output reports/semgrep.sarif \
             --error \
             .
 
