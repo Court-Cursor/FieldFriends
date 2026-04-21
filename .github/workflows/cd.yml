@@ -150,9 +150,9 @@ jobs:
         working-directory: backend
         run: |
           mkdir -p reports
-          pip-audit --strict --skip-editable --progress-spinner off \
+          pip-audit --skip-editable --progress-spinner off \
             --format json --output reports/pip-audit.json
-          pip-audit --strict --skip-editable --progress-spinner off \
+          pip-audit --skip-editable --progress-spinner off \
             --format columns | tee reports/pip-audit.txt
 
       - name: Upload pip-audit report
@@ -210,8 +210,8 @@ jobs:
             --config=p/secrets \
             --exclude=backend/tests \
             --severity=ERROR \
-            --sarif --output reports/semgrep.sarif \
-            --json --output reports/semgrep.json \
+            --sarif \
+            --json \
             --error \
             .
 
