@@ -1,0 +1,368 @@
+name: CD Pipeline
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      action:
+        description: "Manual action to perform on main"
+        type: choice
+        required: true
+        options:
+          - release
+          - deploy
+          - rollback
+      version:
+        description: "Release tag (for release) or image tag to deploy/rollback to (e.g. v0.1.0 or a git SHA). Leave blank to use latest successful build."
+        type: string
+        required: false
+        default: ""
+
+concurrency:
+  group: cd-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+  id-token: write
+  security-events: write
+
+env:
+  AWS_REGION: ap-southeast-1
+  ECR_REPOSITORY: fieldfriends-backend
+  APP_RUNNER_SERVICE: fieldfriends-backend
+
+jobs:
+  # ---------------------------------------------------------------------------
+  # Post-merge automated verification chain (push to main only).
+  # ---------------------------------------------------------------------------
+  build-test:
+    name: build-test
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    outputs:
+      image_tag: ${{ steps.meta.outputs.image_tag }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Compute image tag
+        id: meta
+        run: echo "image_tag=${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: "pip"
+
+      - name: Build backend wheel
+        working-directory: backend
+        run: |
+          python -m pip install -U pip setuptools wheel build
+          python -m build --wheel --outdir dist
+          python -m pip install -e ".[dev]"
+
+      - name: Upload backend wheel
+        uses: actions/upload-artifact@v4
+        with:
+          name: backend-wheel
+          path: backend/dist/*.whl
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install and build frontend
+        working-directory: frontend
+        run: |
+          npm ci
+          npm run build
+
+      - name: Upload frontend build
+        uses: actions/upload-artifact@v4
+        with:
+          name: frontend-dist
+          path: frontend/dist
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Build backend Docker image
+        working-directory: backend
+        run: docker build -t fieldfriends-backend:${{ steps.meta.outputs.image_tag }} .
+
+  unit-test:
+    name: unit-test
+    needs: build-test
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: "pip"
+
+      - name: Install backend with dev deps
+        working-directory: backend
+        run: |
+          python -m pip install -U pip setuptools wheel
+          python -m pip install -e ".[dev]"
+
+      - name: Run pytest with coverage gate
+        working-directory: backend
+        env:
+          TEST_DATABASE_URL: "sqlite+pysqlite:///./test.db"
+        run: python -m pytest --cov-fail-under=90 -q
+
+  dependency-scan:
+    name: dependency-scan
+    needs: build-test
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: "pip"
+
+      - name: Install backend
+        working-directory: backend
+        run: |
+          python -m pip install -U pip setuptools wheel
+          python -m pip install -e ".[dev]"
+          python -m pip install pip-audit
+
+      - name: Audit Python dependencies (pip-audit)
+        working-directory: backend
+        run: pip-audit --strict --progress-spinner off
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Audit npm dependencies
+        working-directory: frontend
+        run: npm audit --audit-level=high
+
+  code-scan:
+    name: code-scan
+    needs: build-test
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install Semgrep
+        run: pip install semgrep
+
+      - name: Run Semgrep security-audit
+        run: |
+          semgrep scan \
+            --config=p/security-audit \
+            --config=p/secrets \
+            --exclude=backend/tests \
+            --severity=ERROR \
+            --error \
+            .
+
+  # ---------------------------------------------------------------------------
+  # Manual actions (workflow_dispatch only).
+  # Each is gated behind a GitHub Environment to require human approval.
+  # ---------------------------------------------------------------------------
+  create-release:
+    name: create-release (manual)
+    if: github.event_name == 'workflow_dispatch' && inputs.action == 'release'
+    runs-on: ubuntu-latest
+    environment: release
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Resolve tag
+        id: tag
+        run: |
+          TAG="${{ inputs.version }}"
+          if [[ -z "$TAG" ]]; then
+            TAG="v$(date -u +%Y.%m.%d)-${GITHUB_SHA::7}"
+          fi
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.tag.outputs.tag }}
+          target_commitish: ${{ github.sha }}
+          name: ${{ steps.tag.outputs.tag }}
+          generate_release_notes: true
+          draft: false
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  deploy:
+    name: deploy (manual)
+    if: github.event_name == 'workflow_dispatch' && inputs.action == 'deploy'
+    runs-on: ubuntu-latest
+    environment: production
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Login to Amazon ECR
+        id: ecr-login
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Resolve image tag
+        id: img
+        run: |
+          TAG="${{ inputs.version }}"
+          if [[ -z "$TAG" ]]; then
+            TAG="${GITHUB_SHA::7}"
+          fi
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+
+      - name: Build and push backend image to ECR
+        env:
+          REGISTRY: ${{ steps.ecr-login.outputs.registry }}
+          TAG: ${{ steps.img.outputs.tag }}
+        working-directory: backend
+        run: |
+          IMAGE="$REGISTRY/${ECR_REPOSITORY}:${TAG}"
+          docker build -t "$IMAGE" .
+          docker push "$IMAGE"
+          echo "image=$IMAGE" >> "$GITHUB_ENV"
+
+      - name: Save current App Runner image (for rollback reference)
+        run: |
+          CURRENT=$(aws apprunner describe-service \
+            --service-arn "${{ secrets.APP_RUNNER_SERVICE_ARN }}" \
+            --query "Service.SourceConfiguration.ImageRepository.ImageIdentifier" \
+            --output text)
+          echo "Previous image: $CURRENT"
+          echo "previous_image=$CURRENT" >> "$GITHUB_OUTPUT"
+        id: prev
+
+      - name: Deploy backend to AWS App Runner
+        run: |
+          aws apprunner update-service \
+            --service-arn "${{ secrets.APP_RUNNER_SERVICE_ARN }}" \
+            --source-configuration "ImageRepository={ImageIdentifier=${image},ImageRepositoryType=ECR,ImageConfiguration={Port=8000}}"
+          aws apprunner start-deployment \
+            --service-arn "${{ secrets.APP_RUNNER_SERVICE_ARN }}"
+
+      - name: Build and deploy frontend to S3 + CloudFront
+        working-directory: frontend
+        env:
+          VITE_API_URL: ${{ secrets.FRONTEND_API_URL }}
+        run: |
+          npm ci
+          npm run build
+          aws s3 sync dist/ "s3://${{ secrets.FRONTEND_BUCKET }}/" --delete
+          aws cloudfront create-invalidation \
+            --distribution-id "${{ secrets.CLOUDFRONT_DISTRIBUTION_ID }}" \
+            --paths "/*"
+
+      - name: Record deployed image tag
+        run: |
+          echo "Deployed image: ${image}"
+          echo "${image}" > deployed-image.txt
+
+      - name: Upload deployed image marker
+        uses: actions/upload-artifact@v4
+        with:
+          name: deployed-image-${{ steps.img.outputs.tag }}
+          path: deployed-image.txt
+          retention-days: 90
+
+  rollback:
+    name: rollback (manual)
+    if: github.event_name == 'workflow_dispatch' && inputs.action == 'rollback'
+    runs-on: ubuntu-latest
+    environment: production
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Login to Amazon ECR
+        id: ecr-login
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Resolve rollback target
+        id: target
+        env:
+          REGISTRY: ${{ steps.ecr-login.outputs.registry }}
+        run: |
+          TAG="${{ inputs.version }}"
+          if [[ -z "$TAG" ]]; then
+            echo "No version provided; resolving previous image tag from ECR..."
+            TAG=$(aws ecr describe-images \
+              --repository-name "${ECR_REPOSITORY}" \
+              --query "sort_by(imageDetails,& imagePushedAt)[-2].imageTags[0]" \
+              --output text)
+          fi
+          if [[ -z "$TAG" || "$TAG" == "None" ]]; then
+            echo "::error::Could not resolve a rollback image tag. Provide one via the 'version' input."
+            exit 1
+          fi
+          IMAGE="$REGISTRY/${ECR_REPOSITORY}:${TAG}"
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          echo "image=$IMAGE" >> "$GITHUB_OUTPUT"
+
+      - name: Verify rollback image exists in ECR
+        run: |
+          aws ecr describe-images \
+            --repository-name "${ECR_REPOSITORY}" \
+            --image-ids imageTag="${{ steps.target.outputs.tag }}"
+
+      - name: Rollback App Runner to previous image
+        run: |
+          aws apprunner update-service \
+            --service-arn "${{ secrets.APP_RUNNER_SERVICE_ARN }}" \
+            --source-configuration "ImageRepository={ImageIdentifier=${{ steps.target.outputs.image }},ImageRepositoryType=ECR,ImageConfiguration={Port=8000}}"
+          aws apprunner start-deployment \
+            --service-arn "${{ secrets.APP_RUNNER_SERVICE_ARN }}"
+
+      - name: Announce rollback
+        run: echo "Rolled back App Runner service to ${{ steps.target.outputs.image }}"
