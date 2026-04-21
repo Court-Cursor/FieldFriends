@@ -148,7 +148,21 @@ jobs:
 
       - name: Audit Python dependencies (pip-audit)
         working-directory: backend
-        run: pip-audit --strict --progress-spinner off
+        run: |
+          mkdir -p reports
+          pip-audit --strict --skip-editable --progress-spinner off \
+            --format json --output reports/pip-audit.json
+          pip-audit --strict --skip-editable --progress-spinner off \
+            --format columns | tee reports/pip-audit.txt
+
+      - name: Upload pip-audit report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pip-audit-report
+          path: backend/reports/pip-audit.*
+          if-no-files-found: warn
+          retention-days: 90   # 90 in cd.yml
 
       - name: Set up Node
         uses: actions/setup-node@v4
@@ -159,7 +173,20 @@ jobs:
 
       - name: Audit npm dependencies
         working-directory: frontend
-        run: npm audit --audit-level=high
+        run: |
+          mkdir -p reports
+          npm audit --audit-level=high --json > reports/npm-audit.json || NPM_AUDIT_FAILED=$?
+          npm audit --audit-level=high | tee reports/npm-audit.txt || true
+          exit ${NPM_AUDIT_FAILED:-0}
+
+      - name: Upload npm audit report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: npm-audit-report
+          path: frontend/reports/npm-audit.*
+          if-no-files-found: warn
+          retention-days: 90   # 90 in cd.yml
 
   code-scan:
     name: code-scan
@@ -177,13 +204,32 @@ jobs:
 
       - name: Run Semgrep security-audit
         run: |
+          mkdir -p reports
           semgrep scan \
             --config=p/security-audit \
             --config=p/secrets \
             --exclude=backend/tests \
             --severity=ERROR \
+            --sarif --output reports/semgrep.sarif \
+            --json --output reports/semgrep.json \
             --error \
             .
+
+      - name: Upload Semgrep report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: semgrep-report
+          path: reports/semgrep.*
+          if-no-files-found: warn
+          retention-days: 90   # 90 in cd.yml
+
+      - name: Upload Semgrep SARIF to code scanning
+        if: always()
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: reports/semgrep.sarif
+          category: semgrep
 
   # ---------------------------------------------------------------------------
   # Manual actions (workflow_dispatch only).
