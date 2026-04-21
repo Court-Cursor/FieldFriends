@@ -60,7 +60,27 @@ def test_join_event_prevents_duplicates(db_session) -> None:
     event_service.join_event(db_session, event.id, joiner)
     event_service.join_event(db_session, event.id, joiner)
 
+    assert participant_repo.count_participants(db_session, event.id) == 2
+
+
+def test_create_event_auto_joins_creator(db_session) -> None:
+    creator_auth = signup(db_session, AuthRequest(email="creator-auto-join@example.com", password="password123"))
+    creator = db_session.get(User, creator_auth.user.id)
+    assert creator is not None
+
+    event = event_service.create_event(
+        db_session,
+        creator,
+        EventCreateRequest(
+            title="Auto Join Event",
+            start_time=_future_time(2),
+            end_time=_future_time(3),
+            location_text="Auto Field",
+        ),
+    )
+
     assert participant_repo.count_participants(db_session, event.id) == 1
+    assert participant_repo.get_participation(db_session, event.id, creator.id) is not None
 
 def test_list_events(db_session) -> None:
     creator_auth = signup(db_session, AuthRequest(email="creator2@example.com", password="password123"))
@@ -173,3 +193,106 @@ def test_join_event_not_found(db_session) -> None:
         event_service.join_event(db_session, uuid.uuid4(), user)
     assert exc.value.status_code == 404
     assert "Event not found" in exc.value.detail
+
+
+def test_leave_event_joiner_success(db_session) -> None:
+    creator_auth = signup(db_session, AuthRequest(email="owner-leave@example.com", password="password123"))
+    joiner_auth = signup(db_session, AuthRequest(email="joiner-leave@example.com", password="password123"))
+    creator = db_session.get(User, creator_auth.user.id)
+    joiner = db_session.get(User, joiner_auth.user.id)
+    assert creator is not None
+    assert joiner is not None
+
+    event = event_service.create_event(
+        db_session,
+        creator,
+        EventCreateRequest(
+            title="Leave Flow",
+            start_time=_future_time(2),
+            end_time=_future_time(3),
+            location_text="North Field",
+        ),
+    )
+
+    event_service.join_event(db_session, event.id, joiner)
+    event_service.leave_event(db_session, event.id, joiner)
+
+    assert participant_repo.count_participants(db_session, event.id) == 1
+
+
+def test_leave_event_creator_forbidden(db_session) -> None:
+    creator_auth = signup(db_session, AuthRequest(email="owner-no-leave@example.com", password="password123"))
+    creator = db_session.get(User, creator_auth.user.id)
+    assert creator is not None
+
+    event = event_service.create_event(
+        db_session,
+        creator,
+        EventCreateRequest(
+            title="Owner Rule",
+            start_time=_future_time(2),
+            end_time=_future_time(3),
+            location_text="Center Court",
+        ),
+    )
+
+    with pytest.raises(HTTPException) as exc:
+        event_service.leave_event(db_session, event.id, creator)
+
+    assert exc.value.status_code == 403
+
+
+def test_delete_event_forbidden_for_non_creator(db_session) -> None:
+    owner_auth = signup(db_session, AuthRequest(email="owner-delete@example.com", password="password123"))
+    other_auth = signup(db_session, AuthRequest(email="other-delete@example.com", password="password123"))
+    owner = db_session.get(User, owner_auth.user.id)
+    other = db_session.get(User, other_auth.user.id)
+    assert owner is not None
+    assert other is not None
+
+    event = event_service.create_event(
+        db_session,
+        owner,
+        EventCreateRequest(
+            title="Delete Restriction",
+            start_time=_future_time(2),
+            end_time=_future_time(3),
+            location_text="South Field",
+        ),
+    )
+
+    with pytest.raises(HTTPException) as exc:
+        event_service.delete_event(db_session, event.id, other)
+
+    assert exc.value.status_code == 403
+
+
+def test_remove_participant_owner_only(db_session) -> None:
+    owner_auth = signup(db_session, AuthRequest(email="owner-remove@example.com", password="password123"))
+    member_auth = signup(db_session, AuthRequest(email="member-remove@example.com", password="password123"))
+    outsider_auth = signup(db_session, AuthRequest(email="outsider-remove@example.com", password="password123"))
+    owner = db_session.get(User, owner_auth.user.id)
+    member = db_session.get(User, member_auth.user.id)
+    outsider = db_session.get(User, outsider_auth.user.id)
+    assert owner is not None
+    assert member is not None
+    assert outsider is not None
+
+    event = event_service.create_event(
+        db_session,
+        owner,
+        EventCreateRequest(
+            title="Remove Member",
+            start_time=_future_time(2),
+            end_time=_future_time(3),
+            location_text="Indoor Hall",
+        ),
+    )
+    event_service.join_event(db_session, event.id, member)
+
+    with pytest.raises(HTTPException) as forbidden_exc:
+        event_service.remove_participant(db_session, event.id, member.id, outsider)
+    assert forbidden_exc.value.status_code == 403
+
+    event_service.remove_participant(db_session, event.id, member.id, owner)
+    assert participant_repo.count_participants(db_session, event.id) == 1
