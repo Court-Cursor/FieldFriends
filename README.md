@@ -140,6 +140,9 @@ Important values:
 
 ### Deploy command
 
+> Use [Action](https://github.com/Court-Cursor/FieldFriends/actions) to deploy to aws
+
+
 Run from the repo root:
 
 ```powershell
