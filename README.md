@@ -109,6 +109,9 @@ python -m pytest
 
 ## AWS deployment
 
+> Use [Action](https://github.com/Court-Cursor/FieldFriends/actions) to deploy to aws. \
+> Deployment will be executed upon merging to main branch.
+
 This repo now includes a PowerShell deployment script at [scripts/aws/deploy.ps1](/c:/Users/Ryzen/Projects/FieldFriends/scripts/aws/deploy.ps1). It deploys:
 - Database: optional PostgreSQL RDS instance, with private or public access depending on config
 - Backend: Docker image to ECR, then create/update an AWS App Runner service
@@ -139,8 +142,6 @@ Important values:
 - `CLOUDFRONT_DISTRIBUTION_ID` is optional. If set, the script invalidates it after the S3 upload.
 
 ### Deploy command
-
-> Use [Action](https://github.com/Court-Cursor/FieldFriends/actions) to deploy to aws
 
 
 Run from the repo root:
