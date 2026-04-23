@@ -325,10 +325,24 @@ jobs:
           aws apprunner update-service \
             --service-arn "${{ secrets.APP_RUNNER_SERVICE_ARN }}" \
             --source-configuration "ImageRepository={ImageIdentifier=${image},ImageRepositoryType=ECR,ImageConfiguration={Port=8000}}"
-          aws apprunner start-deployment \
-            --service-arn "${{ secrets.APP_RUNNER_SERVICE_ARN }}"
 
-      - name: Build and deploy frontend to S3 + CloudFront
+      - name: Wait for App Runner deployment to finish
+        run: |
+          for _ in $(seq 1 60); do
+            STATUS=$(aws apprunner describe-service \
+              --service-arn "${{ secrets.APP_RUNNER_SERVICE_ARN }}" \
+              --query "Service.Status" --output text)
+            echo "App Runner status: $STATUS"
+            case "$STATUS" in
+              RUNNING) exit 0 ;;
+              OPERATION_IN_PROGRESS) sleep 15 ;;
+              *) echo "::error::App Runner ended in unexpected status: $STATUS"; exit 1 ;;
+            esac
+          done
+          echo "::error::Timed out waiting for App Runner deployment"
+          exit 1
+
+      - name: Build and deploy frontend to S3 and CloudFront
         working-directory: frontend
         env:
           VITE_API_URL: ${{ secrets.FRONTEND_API_URL }}
@@ -406,8 +420,22 @@ jobs:
           aws apprunner update-service \
             --service-arn "${{ secrets.APP_RUNNER_SERVICE_ARN }}" \
             --source-configuration "ImageRepository={ImageIdentifier=${{ steps.target.outputs.image }},ImageRepositoryType=ECR,ImageConfiguration={Port=8000}}"
-          aws apprunner start-deployment \
-            --service-arn "${{ secrets.APP_RUNNER_SERVICE_ARN }}"
+
+      - name: Wait for App Runner rollback to finish
+        run: |
+          for _ in $(seq 1 60); do
+            STATUS=$(aws apprunner describe-service \
+              --service-arn "${{ secrets.APP_RUNNER_SERVICE_ARN }}" \
+              --query "Service.Status" --output text)
+            echo "App Runner status: $STATUS"
+            case "$STATUS" in
+              RUNNING) exit 0 ;;
+              OPERATION_IN_PROGRESS) sleep 15 ;;
+              *) echo "::error::App Runner ended in unexpected status: $STATUS"; exit 1 ;;
+            esac
+          done
+          echo "::error::Timed out waiting for App Runner rollback"          
+          exit 1
 
       - name: Announce rollback
         run: echo "Rolled back App Runner service to ${{ steps.target.outputs.image }}"
