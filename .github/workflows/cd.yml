@@ -259,8 +259,8 @@ jobs:
   # VITE_API_URL), and attaches frontend-dist.zip to the GitHub Release so
   # it can be used for both deploy and future rollbacks.
   # ---------------------------------------------------------------------------
-  release:
-    name: release
+  draft-release:
+    name: draft-release
     needs: [build-test, unit-test, frontend-test, dependency-scan, code-scan]
     if: github.event_name == 'push'
     runs-on: ubuntu-latest
@@ -355,7 +355,7 @@ jobs:
   # ---------------------------------------------------------------------------
   deploy-staging:
     name: deploy-staging
-    needs: release
+    needs: draft-release
     if: github.event_name == 'push'
     runs-on: ubuntu-latest
     environment: staging
@@ -375,7 +375,7 @@ jobs:
         run: |
           aws apprunner update-service \
             --service-arn "${{ secrets.APP_RUNNER_SERVICE_ARN }}" \
-            --source-configuration "ImageRepository={ImageIdentifier=${{ needs.release.outputs.image }},ImageRepositoryType=ECR,ImageConfiguration={Port=8000}}"
+            --source-configuration "ImageRepository={ImageIdentifier=${{ needs.draft-release.outputs.image }},ImageRepositoryType=ECR,ImageConfiguration={Port=8000}}"
 
       - name: Wait for staging App Runner deployment to finish
         run: |
@@ -406,7 +406,7 @@ jobs:
   # ---------------------------------------------------------------------------
   deploy:
     name: deploy
-    needs: [release, dast-scan]
+    needs: [draft-release, dast-scan]
     if: github.event_name == 'push' && github.ref_name == 'main'
     runs-on: ubuntu-latest
     environment: production
@@ -424,7 +424,7 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          gh release edit "${{ needs.release.outputs.tag }}" \
+          gh release edit "${{ needs.draft-release.outputs.tag }}" \
             --repo "${{ github.repository }}" \
             --draft=false
 
@@ -432,7 +432,7 @@ jobs:
         run: |
           aws apprunner update-service \
             --service-arn "${{ secrets.APP_RUNNER_SERVICE_ARN }}" \
-            --source-configuration "ImageRepository={ImageIdentifier=${{ needs.release.outputs.image }},ImageRepositoryType=ECR,ImageConfiguration={Port=8000}}"
+            --source-configuration "ImageRepository={ImageIdentifier=${{ needs.draft-release.outputs.image }},ImageRepositoryType=ECR,ImageConfiguration={Port=8000}}"
 
       - name: Wait for App Runner deployment to finish
         run: |
