@@ -430,7 +430,7 @@ jobs:
       contents: read
     steps:
       - name: ZAP Full Scan
-        uses: zaproxy/action-full-scan@v0.11.0
+        uses: zaproxy/action-full-scan@v0.13.0
         with:
           target: ${{ needs.deploy-staging.outputs.service_url }}
           fail_action: false
