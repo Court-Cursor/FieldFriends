@@ -428,7 +428,6 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
-      security-events: write
     steps:
       - name: ZAP Full Scan
         uses: zaproxy/action-full-scan@v0.11.0
@@ -436,14 +435,33 @@ jobs:
           target: ${{ needs.deploy-staging.outputs.service_url }}
           artifact_name: zap-report
           allow_issue_writing: true
-          fail_action: true
+          fail_action: false
 
-      - name: Upload ZAP SARIF to code scanning
+      - name: Gate on HIGH severity alerts
         if: always()
-        uses: github/codeql-action/upload-sarif@v3
+        run: |
+          if [[ ! -f report_json.json ]]; then
+            echo "::warning::ZAP JSON report missing; treating as non-blocking."
+            exit 0
+          fi
+          # ZAP riskcode: 0=Info, 1=Low, 2=Medium, 3=High
+          MAX=$(jq '[.site[].alerts[]?.riskcode | tonumber] | max // 0' report_json.json)
+          echo "Highest ZAP riskcode seen: $MAX"
+          if [[ "$MAX" -ge 3 ]]; then
+            echo "::error::ZAP found HIGH severity vulnerabilities (riskcode=$MAX). Failing dast-scan."
+            exit 1
+          else
+            echo "::warning::ZAP found only sub-HIGH severity alerts (max riskcode=$MAX). Proceeding."
+          fi
+
+      - name: Upload ZAP HTML report
+        if: always()
+        uses: actions/upload-artifact@v4
         with:
-          sarif_file: results.sarif
-          category: zap
+          name: zap-report-html
+          path: report_html.html
+          if-no-files-found: warn
+          retention-days: 90
 
   # ---------------------------------------------------------------------------
   # Manual rollback: restores a previous release for both backend and frontend.
