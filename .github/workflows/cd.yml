@@ -513,15 +513,6 @@ jobs:
             echo "::warning::ZAP found only sub-HIGH severity alerts (max riskcode=$MAX). Proceeding."
           fi
 
-      - name: Upload ZAP HTML report
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: zap-report-html
-          path: report_html.html
-          if-no-files-found: warn
-          retention-days: 90
-
   # ---------------------------------------------------------------------------
   # Manual rollback: restores a previous release for both backend and frontend.
   # The release tag is pure semver (v<APP_VERSION>), so the ECR image tag is
