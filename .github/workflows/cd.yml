@@ -2,7 +2,7 @@ name: CD Pipeline
 
 on:
   push:
-    branches: [main]
+    branches: [main, staging]
   workflow_dispatch:
     inputs:
       action:
@@ -367,7 +367,7 @@ jobs:
   deploy:
     name: deploy
     needs: [release, dast-scan]
-    if: github.event_name == 'push'
+    if: github.event_name == 'push' && github.ref_name == 'main'
     runs-on: ubuntu-latest
     environment: production
     permissions:
@@ -456,7 +456,7 @@ jobs:
       contents: read
     steps:
       - name: ZAP Full Scan
-        uses: zaproxy/action-full-scan@v0.11.0
+        uses: zaproxy/action-full-scan@v0.13.0
         with:
           target: ${{ needs.deploy-staging.outputs.service_url }}
           artifact_name: zap-report
@@ -497,7 +497,7 @@ jobs:
   # ---------------------------------------------------------------------------
   rollback:
     name: rollback (manual)
-    if: github.event_name == 'workflow_dispatch' && inputs.action == 'rollback'
+    if: github.event_name == 'workflow_dispatch' && inputs.action == 'rollback' && github.ref_name == 'main'
     runs-on: ubuntu-latest
     environment: production
     permissions:
