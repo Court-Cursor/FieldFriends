@@ -256,7 +256,7 @@ jobs:
 
       - name: Compute release tag
         id: tag
-        run: echo "tag=v$(date -u +%Y.%m.%d)-${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
+        run: echo "tag=v${{ vars.APP_VERSION }}" >> "$GITHUB_OUTPUT"
 
       - name: Build and push backend image to ECR
         id: push
@@ -296,14 +296,14 @@ jobs:
           if-no-files-found: error
           retention-days: 30
 
-      - name: Create GitHub Release with frontend asset
+      - name: Create draft GitHub Release with frontend asset
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ steps.tag.outputs.tag }}
           target_commitish: ${{ github.sha }}
           name: ${{ steps.tag.outputs.tag }}
           generate_release_notes: true
-          draft: false
+          draft: true
           prerelease: false
           files: frontend-dist.zip
         env:
@@ -371,7 +371,7 @@ jobs:
     runs-on: ubuntu-latest
     environment: production
     permissions:
-      contents: read
+      contents: write
       id-token: write
     steps:
       - name: Configure AWS credentials
@@ -379,6 +379,14 @@ jobs:
         with:
           role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
           aws-region: ${{ env.AWS_REGION }}
+
+      - name: Publish GitHub Release (flip draft -> published)
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release edit "${{ needs.release.outputs.tag }}" \
+            --repo "${{ github.repository }}" \
+            --draft=false
 
       - name: Deploy backend to AWS App Runner
         run: |
@@ -415,6 +423,24 @@ jobs:
             --distribution-id "${{ secrets.CLOUDFRONT_DISTRIBUTION_ID }}" \
             --paths "/*"
 
+      - name: Bump APP_VERSION (patch)
+        env:
+          GH_TOKEN: ${{ secrets.GH_VARS_TOKEN }}
+        run: |
+          CUR="${{ vars.APP_VERSION }}"
+          if [[ ! "$CUR" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::error::APP_VERSION='$CUR' is not semver MAJOR.MINOR.PATCH"
+            exit 1
+          fi
+          IFS='.' read -r MAJ MIN PATCH <<< "$CUR"
+          NEW="${MAJ}.${MIN}.$((PATCH + 1))"
+          echo "Bumping APP_VERSION: $CUR -> $NEW"
+          gh api \
+            --method PATCH \
+            -H "Accept: application/vnd.github+json" \
+            "/repos/${{ github.repository }}/environments/production/variables/APP_VERSION" \
+            -f name="APP_VERSION" -f value="$NEW"
+
   # ---------------------------------------------------------------------------
   # DAST: ZAP Full Scan against the live deployment.
   # Runs after deploy so the target is the freshly promoted production build.
@@ -430,11 +456,12 @@ jobs:
       contents: read
     steps:
       - name: ZAP Full Scan
-        uses: zaproxy/action-full-scan@v0.13.0
+        uses: zaproxy/action-full-scan@v0.11.0
         with:
           target: ${{ needs.deploy-staging.outputs.service_url }}
-          fail_action: false
+          artifact_name: zap-report
           allow_issue_writing: false
+          fail_action: false
 
       - name: Gate on HIGH severity alerts
         if: always()
@@ -453,11 +480,20 @@ jobs:
             echo "::warning::ZAP found only sub-HIGH severity alerts (max riskcode=$MAX). Proceeding."
           fi
 
+      - name: Upload ZAP HTML report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: zap-report-html
+          path: report_html.html
+          if-no-files-found: warn
+          retention-days: 90
+
   # ---------------------------------------------------------------------------
   # Manual rollback: restores a previous release for both backend and frontend.
-  # The release tag encodes the git SHA (format: vYYYY.MM.DD-<sha>), so the
-  # ECR image tag is derived from it. The frontend is downloaded from the
-  # corresponding GitHub Release asset.
+  # The release tag is pure semver (v<APP_VERSION>), so the ECR image tag is
+  # resolved via the release's target commit SHA. The frontend is downloaded
+  # from the corresponding GitHub Release asset.
   # ---------------------------------------------------------------------------
   rollback:
     name: rollback (manual)
@@ -493,8 +529,14 @@ jobs:
             echo "::error::Could not resolve a rollback release tag. Provide one via the 'version' input."
             exit 1
           fi
-          # Tag format: vYYYY.MM.DD-<7-char sha> — extract the SHA suffix.
-          SHA="${TAG##*-}"
+          # Release tag is pure semver; derive the ECR image tag from the
+          # release's target commit SHA (first 7 chars = image tag).
+          SHA_FULL=$(gh release view "$TAG" --repo "${{ github.repository }}" --json targetCommitish --jq '.targetCommitish')
+          if [[ -z "$SHA_FULL" || "$SHA_FULL" == "null" ]]; then
+            echo "::error::Could not resolve commit SHA for release $TAG"
+            exit 1
+          fi
+          SHA="${SHA_FULL:0:7}"
           IMAGE="$REGISTRY/${ECR_REPOSITORY}:${SHA}"
           echo "tag=$TAG" >> "$GITHUB_OUTPUT"
           echo "sha=$SHA" >> "$GITHUB_OUTPUT"
