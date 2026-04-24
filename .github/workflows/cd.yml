@@ -433,8 +433,6 @@ jobs:
         uses: zaproxy/action-full-scan@v0.11.0
         with:
           target: ${{ needs.deploy-staging.outputs.service_url }}
-          artifact_name: zap-report
-          allow_issue_writing: false
           fail_action: false
 
       - name: Gate on HIGH severity alerts
@@ -453,15 +451,6 @@ jobs:
           else
             echo "::warning::ZAP found only sub-HIGH severity alerts (max riskcode=$MAX). Proceeding."
           fi
-
-      - name: Upload ZAP HTML report
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: zap-report-html
-          path: report_html.html
-          if-no-files-found: warn
-          retention-days: 90
 
   # ---------------------------------------------------------------------------
   # Manual rollback: restores a previous release for both backend and frontend.
