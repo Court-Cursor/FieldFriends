@@ -434,7 +434,7 @@ jobs:
         with:
           target: ${{ needs.deploy-staging.outputs.service_url }}
           artifact_name: zap-report
-          allow_issue_writing: true
+          allow_issue_writing: false
           fail_action: false
 
       - name: Gate on HIGH severity alerts
