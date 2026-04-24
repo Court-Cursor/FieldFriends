@@ -434,6 +434,7 @@ jobs:
         with:
           target: ${{ needs.deploy-staging.outputs.service_url }}
           fail_action: false
+          allow_issue_writing: false
 
       - name: Gate on HIGH severity alerts
         if: always()
