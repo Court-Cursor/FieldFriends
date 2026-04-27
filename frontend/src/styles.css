@@ -141,6 +141,86 @@ button:active {
   border: 1px solid #fecaca;
 }
 
+.event-card {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.event-card-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+.event-card-header a {
+  font-size: 1.05rem;
+  font-weight: 600;
+  color: #1f2937;
+}
+
+.event-card-header a:hover {
+  color: #1d4ed8;
+  opacity: 1;
+}
+
+.sport-badge {
+  font-size: 0.72rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  background: #ede9fe;
+  color: #5b21b6;
+  padding: 0.2rem 0.55rem;
+  border-radius: 999px;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.event-card-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  font-size: 0.875rem;
+  color: #6b7280;
+}
+
+.event-card-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: 0.25rem;
+}
+
+.joined-count {
+  font-size: 0.85rem;
+  color: #6b7280;
+}
+
+.event-card-footer button {
+  padding: 0.45rem 1rem;
+  font-size: 0.875rem;
+}
+
+.btn-danger {
+  background: #dc2626;
+}
+
+.btn-danger:hover {
+  background: #b91c1c;
+}
+
+.btn-secondary {
+  background: #ffffff;
+  color: #1d4ed8;
+  border: 1px solid #1d4ed8;
+}
+
+.btn-secondary:hover {
+  background: #eff6ff;
+}
+
 .auth-panel {
   max-width: 420px;
   margin: 3rem auto;

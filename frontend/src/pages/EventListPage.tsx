@@ -46,10 +46,6 @@ export function EventListPage() {
     return <p>Loading events...</p>;
   }
 
-  if (error) {
-    return <p className="error">{error}</p>;
-  }
-
   async function joinEvent(eventId: string) {
     if (!token) {
       return;
@@ -102,42 +98,66 @@ export function EventListPage() {
     }
   }
 
+  function formatDate(iso: string) {
+    return new Date(iso).toLocaleString("en-GB", {
+      weekday: "short",
+      day: "numeric",
+      month: "short",
+      hour: "2-digit",
+      minute: "2-digit",
+    });
+  }
+
   return (
     <section className="panel">
       <h1>Upcoming Events</h1>
+      {error ? <p className="error">{error}</p> : null}
       {events.length === 0 ? <p>No upcoming events found.</p> : null}
       <ul className="event-list">
         {events.map((event) => (
           <li key={event.id}>
-            <Link to={`/events/${event.id}`}>{event.title}</Link>
-            <p>{event.location_text}</p>
-            <p>{new Date(event.start_time).toLocaleString()}</p>
-            <p>Joined: {event.joined_count}</p>
-            {event.participants && event.participants.length > 0 ? (
-              <div>
-                <p>Participants:</p>
-                <ul>
-                  {event.participants.map((participant) => (
-                    <li key={participant.user_id}>{participant.email}</li>
-                  ))}
-                </ul>
+            <div className="event-card">
+              <div className="event-card-header">
+                <Link to={`/events/${event.id}`}>{event.title}</Link>
+                {event.sport_type ? <span className="sport-badge">{event.sport_type}</span> : null}
               </div>
-            ) : null}
-            {token ? (
-              user && event.creator_id === user.id ? (
-                <button type="button" onClick={() => deleteEvent(event.id)} disabled={busyEventId === event.id}>
-                  {busyEventId === event.id ? "Deleting..." : "Delete Event"}
-                </button>
-              ) : event.is_joined_by_me ? (
-                <button type="button" onClick={() => leaveEvent(event.id)} disabled={busyEventId === event.id}>
-                  {busyEventId === event.id ? "Leaving..." : "Leave Event"}
-                </button>
-              ) : (
-                <button type="button" onClick={() => joinEvent(event.id)} disabled={busyEventId === event.id}>
-                  {busyEventId === event.id ? "Joining..." : "Join Event"}
-                </button>
-              )
-            ) : null}
+              <div className="event-card-meta">
+                <span>📍 {event.location_text}</span>
+                <span>🗓 {formatDate(event.start_time)}</span>
+              </div>
+              <div className="event-card-footer">
+                <span className="joined-count">👥 {event.joined_count} joined</span>
+                {token ? (
+                  user && event.creator_id === user.id ? (
+                    <button
+                      type="button"
+                      className="btn-danger"
+                      onClick={() => deleteEvent(event.id)}
+                      disabled={busyEventId === event.id}
+                    >
+                      {busyEventId === event.id ? "Deleting..." : "Delete"}
+                    </button>
+                  ) : event.is_joined_by_me ? (
+                    <button
+                      type="button"
+                      className="btn-secondary"
+                      onClick={() => leaveEvent(event.id)}
+                      disabled={busyEventId === event.id}
+                    >
+                      {busyEventId === event.id ? "Leaving..." : "Leave"}
+                    </button>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => joinEvent(event.id)}
+                      disabled={busyEventId === event.id}
+                    >
+                      {busyEventId === event.id ? "Joining..." : "Join"}
+                    </button>
+                  )
+                ) : null}
+              </div>
+            </div>
           </li>
         ))}
       </ul>
