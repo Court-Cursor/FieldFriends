@@ -37,8 +37,8 @@ describe("SignupPage", () => {
       </MemoryRouter>,
     );
 
-    expect(screen.getByPlaceholderText("Email")).toBeInTheDocument();
-    expect(screen.getByPlaceholderText("Password")).toBeInTheDocument();
+    expect(screen.getByLabelText("Email")).toBeInTheDocument();
+    expect(screen.getByLabelText("Password")).toBeInTheDocument();
     expect(
       screen.getByRole("button", { name: "Create account" }),
     ).toBeInTheDocument();
@@ -53,8 +53,8 @@ describe("SignupPage", () => {
       </MemoryRouter>,
     );
 
-    await userEvent.type(screen.getByPlaceholderText("Email"), "bob@example.com");
-    await userEvent.type(screen.getByPlaceholderText("Password"), "password123");
+    await userEvent.type(screen.getByLabelText("Email"), "bob@example.com");
+    await userEvent.type(screen.getByLabelText("Password"), "password123");
     await userEvent.click(screen.getByRole("button", { name: "Create account" }));
 
     await waitFor(() => {
@@ -74,8 +74,8 @@ describe("SignupPage", () => {
       </MemoryRouter>,
     );
 
-    await userEvent.type(screen.getByPlaceholderText("Email"), "bob@example.com");
-    await userEvent.type(screen.getByPlaceholderText("Password"), "password123");
+    await userEvent.type(screen.getByLabelText("Email"), "bob@example.com");
+    await userEvent.type(screen.getByLabelText("Password"), "password123");
     await userEvent.click(screen.getByRole("button", { name: "Create account" }));
 
     await waitFor(() => {
@@ -93,8 +93,8 @@ describe("SignupPage", () => {
       </MemoryRouter>,
     );
 
-    await userEvent.type(screen.getByPlaceholderText("Email"), "bob@example.com");
-    await userEvent.type(screen.getByPlaceholderText("Password"), "password123");
+    await userEvent.type(screen.getByLabelText("Email"), "bob@example.com");
+    await userEvent.type(screen.getByLabelText("Password"), "password123");
     await userEvent.click(screen.getByRole("button", { name: "Create account" }));
 
     await waitFor(() => {
