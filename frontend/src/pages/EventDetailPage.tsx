@@ -96,6 +96,10 @@ export function EventDetailPage() {
     return <p>Loading event...</p>;
   }
 
+  if (error && !event) {
+    return <p className="error">{error}</p>;
+  }
+
   if (!event) {
     return <p>Event not found.</p>;
   }

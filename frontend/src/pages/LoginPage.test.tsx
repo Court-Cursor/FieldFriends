@@ -37,8 +37,8 @@ describe("LoginPage", () => {
       </MemoryRouter>,
     );
 
-    expect(screen.getByPlaceholderText("Email")).toBeInTheDocument();
-    expect(screen.getByPlaceholderText("Password")).toBeInTheDocument();
+    expect(screen.getByLabelText("Email")).toBeInTheDocument();
+    expect(screen.getByLabelText("Password")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Log in" })).toBeInTheDocument();
   });
 
@@ -51,8 +51,8 @@ describe("LoginPage", () => {
       </MemoryRouter>,
     );
 
-    await userEvent.type(screen.getByPlaceholderText("Email"), "alice@example.com");
-    await userEvent.type(screen.getByPlaceholderText("Password"), "password123");
+    await userEvent.type(screen.getByLabelText("Email"), "alice@example.com");
+    await userEvent.type(screen.getByLabelText("Password"), "password123");
     await userEvent.click(screen.getByRole("button", { name: "Log in" }));
 
     await waitFor(() => {
@@ -72,8 +72,8 @@ describe("LoginPage", () => {
       </MemoryRouter>,
     );
 
-    await userEvent.type(screen.getByPlaceholderText("Email"), "alice@example.com");
-    await userEvent.type(screen.getByPlaceholderText("Password"), "wrongpass");
+    await userEvent.type(screen.getByLabelText("Email"), "alice@example.com");
+    await userEvent.type(screen.getByLabelText("Password"), "wrongpass");
     await userEvent.click(screen.getByRole("button", { name: "Log in" }));
 
     await waitFor(() => {
@@ -91,8 +91,8 @@ describe("LoginPage", () => {
       </MemoryRouter>,
     );
 
-    await userEvent.type(screen.getByPlaceholderText("Email"), "alice@example.com");
-    await userEvent.type(screen.getByPlaceholderText("Password"), "password123");
+    await userEvent.type(screen.getByLabelText("Email"), "alice@example.com");
+    await userEvent.type(screen.getByLabelText("Password"), "password123");
     await userEvent.click(screen.getByRole("button", { name: "Log in" }));
 
     await waitFor(() => {

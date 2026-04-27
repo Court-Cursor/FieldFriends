@@ -104,6 +104,7 @@ export function MyEventsPage() {
   }
 
   if (!data) {
+    if (error) return <p className="error">{error}</p>;
     return <p>Loading...</p>;
   }
 
