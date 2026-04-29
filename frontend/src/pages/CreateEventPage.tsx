@@ -51,32 +51,61 @@ export function CreateEventPage() {
     <section className="panel">
       <h1>Create Event</h1>
       <form className="form" onSubmit={onSubmit}>
-        <input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Title" required />
-        <input value={sportType} onChange={(e) => setSportType(e.target.value)} placeholder="Sport type (optional)" />
-        <textarea value={description} onChange={(e) => setDescription(e.target.value)} placeholder="Description" />
-        <input
-          value={locationText}
-          onChange={(e) => setLocationText(e.target.value)}
-          placeholder="Location"
-          required
-        />
         <label>
-          Start time
-          <input type="datetime-local" value={startTime} onChange={(e) => setStartTime(e.target.value)} required />
+          Title *
+          <input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="e.g. Saturday football" required />
+        </label>
+        <div className="form-row">
+          <label>
+            Sport type
+            <input value={sportType} onChange={(e) => setSportType(e.target.value)} placeholder="e.g. Football" />
+          </label>
+          <label>
+            Max participants
+            <input
+              type="number"
+              min="1"
+              value={maxParticipants}
+              onChange={(e) => setMaxParticipants(e.target.value)}
+              placeholder="No limit"
+            />
+          </label>
+        </div>
+        <label>
+          Description
+          <textarea value={description} onChange={(e) => setDescription(e.target.value)} placeholder="Any details participants should know..." />
         </label>
         <label>
-          End time
-          <input type="datetime-local" value={endTime} onChange={(e) => setEndTime(e.target.value)} required />
+          Location *
+          <input value={locationText} onChange={(e) => setLocationText(e.target.value)} placeholder="e.g. Bishan Park Field 3" required />
         </label>
-        <input value={latitude} onChange={(e) => setLatitude(e.target.value)} placeholder="Latitude (optional)" />
-        <input value={longitude} onChange={(e) => setLongitude(e.target.value)} placeholder="Longitude (optional)" />
-        <input
-          value={maxParticipants}
-          onChange={(e) => setMaxParticipants(e.target.value)}
-          placeholder="Max participants (optional)"
-        />
-        <button type="submit">Create</button>
+        <div className="form-row">
+          <label>
+            Start time *
+            <input type="datetime-local" value={startTime} onChange={(e) => setStartTime(e.target.value)} required />
+          </label>
+          <label>
+            End time *
+            <input type="datetime-local" value={endTime} onChange={(e) => setEndTime(e.target.value)} required />
+          </label>
+        </div>
+
+        <div className="form-section">
+          <p className="form-section-title">Optional coordinates</p>
+          <div className="form-row">
+            <label>
+              Latitude
+              <input value={latitude} onChange={(e) => setLatitude(e.target.value)} placeholder="e.g. 1.3521" />
+            </label>
+            <label>
+              Longitude
+              <input value={longitude} onChange={(e) => setLongitude(e.target.value)} placeholder="e.g. 103.8198" />
+            </label>
+          </div>
+        </div>
+
         {error ? <p className="error">{error}</p> : null}
+        <button type="submit">Create Event</button>
       </form>
     </section>
   );

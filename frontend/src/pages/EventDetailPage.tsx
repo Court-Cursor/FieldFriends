@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { useParams } from "react-router-dom";
 
 import { ApiError, apiClient } from "../api/client";
@@ -96,6 +96,10 @@ export function EventDetailPage() {
     return <p>Loading event...</p>;
   }
 
+  if (error && !event) {
+    return <p className="error">{error}</p>;
+  }
+
   if (!event) {
     return <p>Event not found.</p>;
   }
@@ -106,63 +110,106 @@ export function EventDetailPage() {
   const canLeave = Boolean(user && !isCreator && isJoined);
   const canSeeParticipants = Array.isArray(event.participants);
 
+  function formatDate(iso: string) {
+    return new Date(iso).toLocaleString("en-GB", {
+      weekday: "short",
+      day: "numeric",
+      month: "short",
+      year: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+    });
+  }
+
   return (
     <section className="panel">
-      <h1>{event.title}</h1>
-      <p>{event.description ?? "No description"}</p>
-      <p>Sport: {event.sport_type ?? "N/A"}</p>
-      <p>Location: {event.location_text}</p>
-      <p>Starts: {new Date(event.start_time).toLocaleString()}</p>
-      <p>Ends: {new Date(event.end_time).toLocaleString()}</p>
-      <p>Joined: {event.joined_count}</p>
+      <Link className="back-link" to="/">← Back to events</Link>
+
+      {error ? <p className="error">{error}</p> : null}
+
+      <div className="event-detail-header">
+        <h1>{event.title}</h1>
+        {event.sport_type ? <span className="sport-badge">{event.sport_type}</span> : null}
+      </div>
+
+      {event.description ? (
+        <p className="event-description">{event.description}</p>
+      ) : null}
+
+      <div className="event-meta-grid">
+        <div className="meta-item">
+          <span className="meta-label">📍 Location</span>
+          <span className="meta-value">{event.location_text}</span>
+        </div>
+        <div className="meta-item">
+          <span className="meta-label">🗓 Starts</span>
+          <span className="meta-value">{formatDate(event.start_time)}</span>
+        </div>
+        <div className="meta-item">
+          <span className="meta-label">🏁 Ends</span>
+          <span className="meta-value">{formatDate(event.end_time)}</span>
+        </div>
+        <div className="meta-item">
+          <span className="meta-label">👥 Participants</span>
+          <span className="meta-value">{event.joined_count} joined</span>
+        </div>
+      </div>
+
       {user ? (
-        <div>
+        <div className="event-actions">
           {canJoin ? (
             <button type="button" onClick={joinEvent} disabled={isSubmitting}>
               {isSubmitting ? "Working..." : "Join Event"}
             </button>
           ) : null}
           {canLeave ? (
-            <button type="button" onClick={leaveEvent} disabled={isSubmitting}>
+            <button type="button" className="btn-secondary" onClick={leaveEvent} disabled={isSubmitting}>
               {isSubmitting ? "Working..." : "Leave Event"}
             </button>
           ) : null}
           {isCreator ? (
-            <button type="button" onClick={deleteEvent} disabled={isSubmitting}>
+            <button type="button" className="btn-danger" onClick={deleteEvent} disabled={isSubmitting}>
               {isSubmitting ? "Working..." : "Delete Event"}
             </button>
           ) : null}
         </div>
       ) : (
-        <p>Log in to join this event.</p>
+        <p style={{ color: "#6b7280" }}>
+          <Link to="/login">Log in</Link> to join this event.
+        </p>
       )}
+
       <h2>Participants</h2>
       {canSeeParticipants ? (
         event.participants && event.participants.length > 0 ? (
           <ul className="event-list">
             {event.participants.map((participant) => (
               <li key={participant.user_id}>
-                <p>{participant.email}</p>
-                <p>Joined: {new Date(participant.joined_at).toLocaleString()}</p>
-                {isCreator && participant.user_id !== event.creator_id ? (
-                  <button
-                    type="button"
-                    onClick={() => removeParticipant(participant.user_id)}
-                    disabled={isSubmitting}
-                  >
-                    {isSubmitting ? "Working..." : "Remove"}
-                  </button>
-                ) : null}
+                <div className="participant-row">
+                  <div className="participant-info">
+                    <span className="participant-email">{participant.email}</span>
+                    <span className="participant-joined">Joined {formatDate(participant.joined_at)}</span>
+                  </div>
+                  {isCreator && participant.user_id !== event.creator_id ? (
+                    <button
+                      type="button"
+                      className="btn-danger"
+                      onClick={() => removeParticipant(participant.user_id)}
+                      disabled={isSubmitting}
+                    >
+                      Remove
+                    </button>
+                  ) : null}
+                </div>
               </li>
             ))}
           </ul>
         ) : (
-          <p>No participants yet.</p>
+          <p style={{ color: "#6b7280" }}>No participants yet.</p>
         )
       ) : (
-        <p>Join this event to view participants.</p>
+        <p style={{ color: "#6b7280" }}>Join this event to view participants.</p>
       )}
-      {error ? <p className="error">{error}</p> : null}
     </section>
   );
 }
