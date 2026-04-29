@@ -8,7 +8,7 @@ export function NavBar() {
   return (
     <header className="nav">
       <Link className="brand" to="/">
-        FieldFriends - Demo
+        FieldFriends
       </Link>
       <nav>
         <NavLink to="/">Events</NavLink>
