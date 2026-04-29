@@ -225,7 +225,7 @@ jobs:
 
       - name: Upload dependency SARIF to GitHub Security tab
         if: always()
-        uses: github/codeql-action/upload-sarif@v3
+        uses: github/codeql-action/upload-sarif@v4
         with:
           sarif_file: trivy-fs-results.sarif
           category: trivy-dependency
@@ -267,7 +267,7 @@ jobs:
 
       - name: Upload Semgrep SARIF to code scanning
         if: always()
-        uses: github/codeql-action/upload-sarif@v3
+        uses: github/codeql-action/upload-sarif@v4
         with:
           sarif_file: reports/semgrep.sarif
           category: semgrep
@@ -296,7 +296,7 @@ jobs:
 
       - name: Upload Trivy SARIF to GitHub Security tab
         if: always()
-        uses: github/codeql-action/upload-sarif@v3
+        uses: github/codeql-action/upload-sarif@v4
         with:
           sarif_file: trivy-results.sarif
           category: trivy
@@ -616,7 +616,7 @@ jobs:
                           'ruleId': rule_id,
                           'level': level,
                           'message': {'text': msg},
-                          'locations': [{'physicalLocation': {'artifactLocation': {'uri': uri}}}]
+                          'locations': [{'logicalLocations': [{'name': uri, 'fullyQualifiedName': uri, 'kind': 'url'}]}]
                       })
           sarif = {
               '$schema': 'https://json.schemastore.org/sarif-2.1.0.json',
@@ -635,7 +635,7 @@ jobs:
 
       - name: Upload ZAP SARIF to GitHub Security tab
         if: always() && steps.zap-convert.outputs.converted == 'true'
-        uses: github/codeql-action/upload-sarif@v3
+        uses: github/codeql-action/upload-sarif@v4
         with:
           sarif_file: zap-results.sarif
           category: zap
