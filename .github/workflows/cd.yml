@@ -650,7 +650,8 @@ jobs:
 
       - name: Rollback frontend on S3 and invalidate CloudFront
         run: |
-          aws s3 sync frontend/dist/ "s3://${{ secrets.FRONTEND_BUCKET }}/" --delete
+          aws s3 sync frontend/dist/ "s3://${{ secrets.FRONTEND_BUCKET }}/"
+          aws s3 cp frontend/dist/index.html "s3://${{ secrets.FRONTEND_BUCKET }}/index.html"
           aws cloudfront create-invalidation \
             --distribution-id "${{ secrets.CLOUDFRONT_DISTRIBUTION_ID }}" \
             --paths "/*"
