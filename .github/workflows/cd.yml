@@ -211,6 +211,25 @@ jobs:
           if-no-files-found: warn
           retention-days: 90
 
+      - name: Run Trivy filesystem scan (dependencies)
+        uses: aquasecurity/trivy-action@master
+        with:
+          scan-type: fs
+          scan-ref: .
+          scanners: vuln
+          format: sarif
+          output: trivy-fs-results.sarif
+          severity: CRITICAL,HIGH
+          exit-code: '0'
+          skip-dirs: frontend/node_modules
+
+      - name: Upload dependency SARIF to GitHub Security tab
+        if: always()
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: trivy-fs-results.sarif
+          category: trivy-dependency
+
   code-scan:
     name: code-scan
     needs: build-test
@@ -532,6 +551,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
+      security-events: write
     steps:
       - name: ZAP Full Scan
         uses: zaproxy/action-full-scan@v0.13.0
@@ -557,6 +577,68 @@ jobs:
           else
             echo "::warning::ZAP found only sub-HIGH severity alerts (max riskcode=$MAX). Proceeding."
           fi
+
+      - name: Convert ZAP report to SARIF
+        id: zap-convert
+        if: always()
+        run: |
+          if [[ ! -f report_json.json ]]; then
+            echo "::warning::ZAP JSON report missing; skipping SARIF conversion."
+            echo "converted=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          python3 << 'PYEOF'
+          import json, sys
+          with open('report_json.json') as f:
+              zap = json.load(f)
+          results, rules_map = [], {}
+          for site in zap.get('site', []):
+              for alert in site.get('alerts', []):
+                  risk = int(alert.get('riskcode', 0))
+                  rule_id = f"ZAP-{alert.get('pluginid', 'UNKNOWN')}"
+                  level = {3: 'error', 2: 'warning', 1: 'note', 0: 'none'}.get(risk, 'warning')
+                  if rule_id not in rules_map:
+                      rules_map[rule_id] = {
+                          'id': rule_id,
+                          'name': alert.get('name', '').replace(' ', ''),
+                          'shortDescription': {'text': alert.get('name', '')},
+                          'fullDescription': {'text': alert.get('desc', alert.get('name', ''))},
+                          'help': {'text': (alert.get('solution') or alert.get('name', ''))},
+                          'properties': {'tags': ['security']}
+                      }
+                  for inst in alert.get('instances', []):
+                      uri = inst.get('uri', '')
+                      evidence = inst.get('evidence', '')
+                      msg = alert.get('name', '')
+                      if evidence:
+                          msg = f'{msg} | Evidence: {evidence[:200]}'
+                      results.append({
+                          'ruleId': rule_id,
+                          'level': level,
+                          'message': {'text': msg},
+                          'locations': [{'physicalLocation': {'artifactLocation': {'uri': uri}}}]
+                      })
+          sarif = {
+              '$schema': 'https://json.schemastore.org/sarif-2.1.0.json',
+              'version': '2.1.0',
+              'runs': [{'tool': {'driver': {
+                  'name': 'OWASP ZAP',
+                  'informationUri': 'https://www.zaproxy.org/',
+                  'rules': list(rules_map.values())
+              }}, 'results': results}]
+          }
+          with open('zap-results.sarif', 'w') as f:
+              json.dump(sarif, f, indent=2)
+          print(f'Converted {len(results)} ZAP findings ({len(rules_map)} unique rules) to SARIF')
+          PYEOF
+          echo "converted=true" >> "$GITHUB_OUTPUT"
+
+      - name: Upload ZAP SARIF to GitHub Security tab
+        if: always() && steps.zap-convert.outputs.converted == 'true'
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: zap-results.sarif
+          category: zap
 
   # ---------------------------------------------------------------------------
   # Manual rollback: restores a previous release for both backend and frontend.
@@ -650,7 +732,8 @@ jobs:
 
       - name: Rollback frontend on S3 and invalidate CloudFront
         run: |
-          aws s3 sync frontend/dist/ "s3://${{ secrets.FRONTEND_BUCKET }}/" --delete
+          aws s3 sync frontend/dist/ "s3://${{ secrets.FRONTEND_BUCKET }}/"
+          aws s3 cp frontend/dist/index.html "s3://${{ secrets.FRONTEND_BUCKET }}/index.html"
           aws cloudfront create-invalidation \
             --distribution-id "${{ secrets.CLOUDFRONT_DISTRIBUTION_ID }}" \
             --paths "/*"
