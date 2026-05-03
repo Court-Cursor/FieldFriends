@@ -1,10 +1,17 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
+import uuid
+
+from app.core.security import create_access_token
 
 
 def _future_iso(hours: int) -> str:
     return (datetime.now(UTC) + timedelta(hours=hours)).isoformat()
+
+
+def _past_iso(hours: int) -> str:
+    return (datetime.now(UTC) - timedelta(hours=hours)).isoformat()
 
 
 def signup_and_get_token(client, email: str, password: str = "password123") -> str:
@@ -31,6 +38,53 @@ def test_signup_login_flow(client) -> None:
     me_response = client.get("/me", headers={"Authorization": f"Bearer {token}"})
     assert me_response.status_code == 200
     assert me_response.json()["email"] == "user@example.com"
+
+
+def test_signup_rejects_duplicate_email(client) -> None:
+    first_response = client.post(
+        "/auth/signup",
+        json={"email": "duplicate@example.com", "password": "password123"},
+    )
+    assert first_response.status_code == 201
+
+    duplicate_response = client.post(
+        "/auth/signup",
+        json={"email": "duplicate@example.com", "password": "password123"},
+    )
+    assert duplicate_response.status_code == 409
+    assert duplicate_response.json()["detail"] == "Email already registered"
+
+
+def test_login_rejects_invalid_password(client) -> None:
+    signup_response = client.post(
+        "/auth/signup",
+        json={"email": "bad-login@example.com", "password": "password123"},
+    )
+    assert signup_response.status_code == 201
+
+    response = client.post(
+        "/auth/login",
+        json={"email": "bad-login@example.com", "password": "wrongpass"},
+    )
+
+    assert response.status_code == 401
+    assert response.json()["detail"] == "Invalid credentials"
+
+
+def test_me_rejects_invalid_token(client) -> None:
+    response = client.get("/me", headers={"Authorization": "Bearer not-a-token"})
+
+    assert response.status_code == 401
+    assert response.json()["detail"] == "Invalid token"
+
+
+def test_me_rejects_token_for_missing_user(client) -> None:
+    missing_user_token = create_access_token(str(uuid.uuid4()))
+
+    response = client.get("/me", headers={"Authorization": f"Bearer {missing_user_token}"})
+
+    assert response.status_code == 401
+    assert response.json()["detail"] == "User not found"
 
 
 def test_create_event_requires_auth(client) -> None:
@@ -84,16 +138,23 @@ def test_join_event_requires_auth(client) -> None:
     assert join_response.status_code == 401
 
 
-def _create_event(client, token: str, title: str = "Role Event") -> str:
+def _create_event(
+    client,
+    token: str,
+    title: str = "Role Event",
+    **overrides,
+) -> str:
+    payload = {
+        "title": title,
+        "start_time": _future_iso(2),
+        "end_time": _future_iso(3),
+        "location_text": "Main Arena",
+    }
+    payload.update(overrides)
     response = client.post(
         "/events",
         headers={"Authorization": f"Bearer {token}"},
-        json={
-            "title": title,
-            "start_time": _future_iso(2),
-            "end_time": _future_iso(3),
-            "location_text": "Main Arena",
-        },
+        json=payload,
     )
     assert response.status_code == 201
     return response.json()["id"]
@@ -137,6 +198,82 @@ def test_delete_event_owner_only(client) -> None:
 
     not_found = client.get(f"/events/{event_id}")
     assert not_found.status_code == 404
+
+
+def test_list_events_filters_by_query_sport_date_and_paginates(client) -> None:
+    owner_token = signup_and_get_token(client, "filter-owner@example.com")
+    soccer_id = _create_event(
+        client,
+        owner_token,
+        "Morning Soccer",
+        sport_type="soccer",
+        location_text="North Field",
+        start_time=_future_iso(2),
+        end_time=_future_iso(3),
+    )
+    basketball_id = _create_event(
+        client,
+        owner_token,
+        "Evening Basketball",
+        sport_type="basketball",
+        location_text="East Gym",
+        start_time=_future_iso(5),
+        end_time=_future_iso(6),
+    )
+    _create_event(
+        client,
+        owner_token,
+        "Late Tennis",
+        sport_type="tennis",
+        location_text="Court 7",
+        start_time=_future_iso(8),
+        end_time=_future_iso(9),
+    )
+
+    query_response = client.get("/events", params={"q": "north"})
+    assert query_response.status_code == 200
+    assert [event["id"] for event in query_response.json()] == [soccer_id]
+
+    sport_response = client.get("/events", params={"sport": "basketball"})
+    assert sport_response.status_code == 200
+    assert [event["id"] for event in sport_response.json()] == [basketball_id]
+
+    date_response = client.get(
+        "/events",
+        params={"date_from": _future_iso(4), "date_to": _future_iso(7)},
+    )
+    assert date_response.status_code == 200
+    assert [event["id"] for event in date_response.json()] == [basketball_id]
+
+    paged_response = client.get("/events", params={"limit": 1, "offset": 1})
+    assert paged_response.status_code == 200
+    assert len(paged_response.json()) == 1
+    assert paged_response.json()[0]["id"] == basketball_id
+
+
+def test_list_events_excludes_past_events(client) -> None:
+    owner_token = signup_and_get_token(client, "past-owner@example.com")
+    _create_event(
+        client,
+        owner_token,
+        "Already Finished",
+        start_time=_past_iso(3),
+        end_time=_past_iso(2),
+    )
+    future_id = _create_event(client, owner_token, "Future Game")
+
+    response = client.get("/events")
+
+    assert response.status_code == 200
+    ids = {event["id"] for event in response.json()}
+    assert future_id in ids
+    assert all(event["title"] != "Already Finished" for event in response.json())
+
+
+def test_event_list_query_validation(client) -> None:
+    response = client.get("/events", params={"limit": 0, "offset": -1})
+
+    assert response.status_code == 422
 
 
 def test_owner_can_remove_participant(client) -> None:

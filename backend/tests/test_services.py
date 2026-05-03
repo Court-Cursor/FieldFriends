@@ -1,9 +1,11 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
+import uuid
 
 import pytest
 from fastapi import HTTPException
+from pydantic import ValidationError
 
 from app.models.user import User
 from app.repo import participant_repo
@@ -12,10 +14,13 @@ from app.schemas.event import EventCreateRequest
 from app.service import event_service
 from app.service.auth_service import signup
 
-import uuid
 
 def _future_time(hours: int) -> datetime:
     return datetime.now(UTC) + timedelta(hours=hours)
+
+
+def _past_time(hours: int) -> datetime:
+    return datetime.now(UTC) - timedelta(hours=hours)
 
 
 def test_create_event_validation_rejects_invalid_time_order(db_session) -> None:
@@ -195,6 +200,59 @@ def test_join_event_not_found(db_session) -> None:
     assert "Event not found" in exc.value.detail
 
 
+def test_join_event_rejects_ended_event(db_session) -> None:
+    creator_auth = signup(db_session, AuthRequest(email="creator-ended@example.com", password="password123"))
+    joiner_auth = signup(db_session, AuthRequest(email="joiner-ended@example.com", password="password123"))
+    creator = db_session.get(User, creator_auth.user.id)
+    joiner = db_session.get(User, joiner_auth.user.id)
+    assert creator is not None
+    assert joiner is not None
+
+    event = event_service.create_event(
+        db_session,
+        creator,
+        EventCreateRequest(
+            title="Ended Game",
+            start_time=_past_time(3),
+            end_time=_past_time(2),
+            location_text="Old Field",
+        ),
+    )
+
+    with pytest.raises(HTTPException) as exc:
+        event_service.join_event(db_session, event.id, joiner)
+
+    assert exc.value.status_code == 400
+    assert exc.value.detail == "Cannot join an event that already ended"
+
+
+def test_join_event_rejects_full_event(db_session) -> None:
+    creator_auth = signup(db_session, AuthRequest(email="creator-full@example.com", password="password123"))
+    joiner_auth = signup(db_session, AuthRequest(email="joiner-full@example.com", password="password123"))
+    creator = db_session.get(User, creator_auth.user.id)
+    joiner = db_session.get(User, joiner_auth.user.id)
+    assert creator is not None
+    assert joiner is not None
+
+    event = event_service.create_event(
+        db_session,
+        creator,
+        EventCreateRequest(
+            title="Full Game",
+            start_time=_future_time(2),
+            end_time=_future_time(3),
+            location_text="Small Court",
+            max_participants=1,
+        ),
+    )
+
+    with pytest.raises(HTTPException) as exc:
+        event_service.join_event(db_session, event.id, joiner)
+
+    assert exc.value.status_code == 400
+    assert exc.value.detail == "Event is full"
+
+
 def test_leave_event_joiner_success(db_session) -> None:
     creator_auth = signup(db_session, AuthRequest(email="owner-leave@example.com", password="password123"))
     joiner_auth = signup(db_session, AuthRequest(email="joiner-leave@example.com", password="password123"))
@@ -240,6 +298,44 @@ def test_leave_event_creator_forbidden(db_session) -> None:
         event_service.leave_event(db_session, event.id, creator)
 
     assert exc.value.status_code == 403
+
+
+def test_leave_event_rejects_user_who_has_not_joined(db_session) -> None:
+    creator_auth = signup(db_session, AuthRequest(email="owner-not-joined@example.com", password="password123"))
+    outsider_auth = signup(db_session, AuthRequest(email="outsider-not-joined@example.com", password="password123"))
+    creator = db_session.get(User, creator_auth.user.id)
+    outsider = db_session.get(User, outsider_auth.user.id)
+    assert creator is not None
+    assert outsider is not None
+
+    event = event_service.create_event(
+        db_session,
+        creator,
+        EventCreateRequest(
+            title="No Leave",
+            start_time=_future_time(2),
+            end_time=_future_time(3),
+            location_text="Center Field",
+        ),
+    )
+
+    with pytest.raises(HTTPException) as exc:
+        event_service.leave_event(db_session, event.id, outsider)
+
+    assert exc.value.status_code == 409
+    assert exc.value.detail == "User is not joined to this event"
+
+
+def test_delete_event_not_found(db_session) -> None:
+    auth = signup(db_session, AuthRequest(email="delete-missing@example.com", password="password123"))
+    user = db_session.get(User, auth.user.id)
+    assert user is not None
+
+    with pytest.raises(HTTPException) as exc:
+        event_service.delete_event(db_session, uuid.uuid4(), user)
+
+    assert exc.value.status_code == 404
+    assert exc.value.detail == "Event not found"
 
 
 def test_delete_event_forbidden_for_non_creator(db_session) -> None:
@@ -296,3 +392,101 @@ def test_remove_participant_owner_only(db_session) -> None:
 
     event_service.remove_participant(db_session, event.id, member.id, owner)
     assert participant_repo.count_participants(db_session, event.id) == 1
+
+
+def test_remove_participant_rejects_removing_creator(db_session) -> None:
+    owner_auth = signup(db_session, AuthRequest(email="owner-remove-self@example.com", password="password123"))
+    owner = db_session.get(User, owner_auth.user.id)
+    assert owner is not None
+
+    event = event_service.create_event(
+        db_session,
+        owner,
+        EventCreateRequest(
+            title="Owner Stays",
+            start_time=_future_time(2),
+            end_time=_future_time(3),
+            location_text="Indoor Court",
+        ),
+    )
+
+    with pytest.raises(HTTPException) as exc:
+        event_service.remove_participant(db_session, event.id, owner.id, owner)
+
+    assert exc.value.status_code == 400
+    assert exc.value.detail == "Cannot remove event creator"
+
+
+def test_remove_participant_not_found(db_session) -> None:
+    owner_auth = signup(db_session, AuthRequest(email="owner-remove-missing@example.com", password="password123"))
+    missing_auth = signup(db_session, AuthRequest(email="missing-remove@example.com", password="password123"))
+    owner = db_session.get(User, owner_auth.user.id)
+    missing_user = db_session.get(User, missing_auth.user.id)
+    assert owner is not None
+    assert missing_user is not None
+
+    event = event_service.create_event(
+        db_session,
+        owner,
+        EventCreateRequest(
+            title="Missing Participant",
+            start_time=_future_time(2),
+            end_time=_future_time(3),
+            location_text="Indoor Court",
+        ),
+    )
+
+    with pytest.raises(HTTPException) as exc:
+        event_service.remove_participant(db_session, event.id, missing_user.id, owner)
+
+    assert exc.value.status_code == 404
+    assert exc.value.detail == "Participant not found"
+
+
+def test_event_create_request_requires_timezone() -> None:
+    with pytest.raises(ValidationError) as exc:
+        EventCreateRequest(
+            title="No Timezone",
+            start_time=datetime.now(),
+            end_time=datetime.now() + timedelta(hours=1),
+            location_text="Main Field",
+        )
+
+    assert "must include timezone" in str(exc.value)
+
+
+def test_event_create_request_rejects_blank_title_and_location() -> None:
+    with pytest.raises(ValidationError) as exc:
+        EventCreateRequest(
+            title="   ",
+            start_time=_future_time(1),
+            end_time=_future_time(2),
+            location_text="   ",
+        )
+
+    assert "must not be empty" in str(exc.value)
+
+
+def test_event_create_request_normalizes_blank_sport_type() -> None:
+    payload = EventCreateRequest(
+        title="Pickup Game",
+        sport_type="   ",
+        start_time=_future_time(1),
+        end_time=_future_time(2),
+        location_text="Main Field",
+    )
+
+    assert payload.sport_type is None
+
+
+def test_event_create_request_rejects_zero_max_participants() -> None:
+    with pytest.raises(ValidationError) as exc:
+        EventCreateRequest(
+            title="No Space",
+            start_time=_future_time(1),
+            end_time=_future_time(2),
+            location_text="Main Field",
+            max_participants=0,
+        )
+
+    assert "greater than or equal to 1" in str(exc.value)

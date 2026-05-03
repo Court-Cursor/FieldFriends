@@ -12,6 +12,7 @@ export default defineConfig({
       provider: "v8",
       reporter: ["text", "json"],
       exclude: [
+        "dist/**",
         "src/test/**",
         "src/vite-env.d.ts",
         "src/main.tsx",
