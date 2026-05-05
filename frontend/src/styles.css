@@ -407,3 +407,11 @@ button:active {
   color: #6b7280;
   text-align: center;
 }
+
+.logout {
+  background-color: red;
+}
+
+.logout:hover {
+  background-color: darkred;
+}

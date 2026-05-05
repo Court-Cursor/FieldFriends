@@ -19,7 +19,7 @@ export function NavBar() {
         {user ? (
           <>
             <span>{user.email}</span>
-            <button type="button" onClick={logout}>
+            <button className="logout" type="button" onClick={logout}>
               Logout
             </button>
           </>
